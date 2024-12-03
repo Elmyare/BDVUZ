@@ -30,14 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_teacher'])) {
 }
 
 // Добавление ученика
-// Добавление ученика
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_student'])) {
     $name = $_POST['student_name'];
     $age = $_POST['age'];
     $teacher_id = $_POST['teacher_id'];
 
     if (!empty($name) && !empty($age) && !empty($teacher_id)) {
-        // Добавляем ученика в таблицу students
         $sql = "INSERT INTO students (name, age, teacher_id) VALUES (?, ?, ?)";
         $stmt = $conn->prepare($sql);
         $stmt->bind_param("sii", $name, $age, $teacher_id);
@@ -45,10 +43,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_student'])) {
         $student_id = $stmt->insert_id; // Получаем id нового студента
         $stmt->close();
 
-        // Связываем ученика с курсами через таблицу student_courses
         if (isset($_POST['course_ids'])) {
             foreach ($_POST['course_ids'] as $course_id) {
-                // Для каждого выбранного курса добавляем запись в таблицу student_courses
                 $sql = "INSERT INTO student_courses (student_id, course_id) VALUES (?, ?)";
                 $stmt = $conn->prepare($sql);
                 $stmt->bind_param("ii", $student_id, $course_id);
@@ -63,7 +59,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_student'])) {
         echo "Все поля для ученика должны быть заполнены.";
     }
 }
-
 
 // Добавление курса
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_course'])) {
@@ -88,24 +83,50 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_course'])) {
 // Функции выборки данных
 function fetch_teachers($conn) {
     $sql = "SELECT * FROM teachers";
-    return $conn->query($sql);
+    $result = $conn->query($sql);
+    
+    if ($result === false) {
+        echo "Ошибка при выполнении запроса: " . $conn->error . "<br>"; // Выводим ошибку
+        return null;
+    }
+
+    return $result;
 }
 
 function fetch_students($conn) {
     $sql = "SELECT students.id_student, students.name AS student_name, students.age, teachers.name AS teacher_name 
             FROM students
             JOIN teachers ON students.teacher_id = teachers.id_teacher";
-    return $conn->query($sql);
+    $result = $conn->query($sql);
+    if ($result === false) {
+        echo "Ошибка при выполнении запроса: " . $conn->error;
+        return null;
+    }
+    return $result;
 }
 
 function fetch_courses($conn) {
-    $sql = "SELECT courses.id_course, courses.course_name, courses.duration, teachers.name AS teacher_name 
-            FROM courses
-            JOIN teachers ON courses.teacher_id = teachers.id_teacher";
-    return $conn->query($sql);
+    $sql = "SELECT c.id_course, c.course_name, c.duration, t.name AS teacher_name
+            FROM courses c
+            LEFT JOIN teachers t ON c.teacher_id = t.id_teacher";
+
+    $result = $conn->query($sql);
+
+    if ($result === false) {
+        echo "Ошибка при выполнении запроса: " . $conn->error . "<br>";
+        return null;  // Возвращаем null в случае ошибки
+    }
+
+    // Проверка перед возвратом
+    if ($result instanceof mysqli_result) {
+        return $result;
+    } else {
+        return null; // Если результат не mysqli_result, то вернуть null
+    }
 }
 
-// Выборка студентов и курсов
+
+// Функция выборки курсов для учеников
 function fetch_student_courses($conn) {
     $sql = "SELECT students.id_student, students.name AS student_name, 
                    teachers.name AS teacher_name,
@@ -115,17 +136,27 @@ function fetch_student_courses($conn) {
             JOIN teachers ON students.teacher_id = teachers.id_teacher
             LEFT JOIN courses ON student_courses.course_id = courses.id_course
             GROUP BY students.id_student";
-    return $conn->query($sql);
+    $result = $conn->query($sql);
+    if ($result === false) {
+        echo "Ошибка при выполнении запроса: " . $conn->error;
+        return null;
+    }
+    return $result;
 }
-
 
 // Получение данных
 $teachers = fetch_teachers($conn);
 $students = fetch_student_courses($conn);
+// Получение данных
 $courses = fetch_courses($conn);
-$student_courses = fetch_student_courses($conn);
 
-$conn->close();
+
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    header("Location: " . $_SERVER['PHP_SELF']);
+    exit;
+}
+
 ?>
 
 <!DOCTYPE html>
@@ -155,7 +186,7 @@ $conn->close();
         </thead>
         <tbody>
             <?php
-            if ($teachers->num_rows > 0) {
+            if ($teachers && $teachers->num_rows > 0) {
                 while ($row = $teachers->fetch_assoc()) {
                     echo "<tr><td>{$row['id_teacher']}</td><td>{$row['name']}</td><td>{$row['specialization']}</td></tr>";
                 }
@@ -175,8 +206,7 @@ $conn->close();
         <label for="teacher_id">Преподаватель:</label>
         <select name="teacher_id" required>
             <?php
-            $teachers = fetch_teachers(new mysqli(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_DATABASE));
-            if ($teachers->num_rows > 0) {
+            if ($teachers && $teachers->num_rows > 0) {
                 while ($row = $teachers->fetch_assoc()) {
                     echo "<option value='{$row['id_teacher']}'>{$row['name']}</option>";
                 }
@@ -188,8 +218,7 @@ $conn->close();
 
         <label for="courses">Выберите курсы:</label><br>
         <?php
-        $courses = fetch_courses(new mysqli(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_DATABASE));
-        if ($courses->num_rows > 0) {
+        if ($courses && $courses->num_rows > 0) {
             while ($row = $courses->fetch_assoc()) {
                 echo "<input type='checkbox' name='course_ids[]' value='{$row['id_course']}'> {$row['course_name']}<br>";
             }
@@ -200,7 +229,6 @@ $conn->close();
         <br><br>
         <input type="submit" name="add_student" value="Добавить ученика">
     </form>
-
 
     <h2>Список учеников</h2>
     <table border="1">
@@ -215,19 +243,19 @@ $conn->close();
         </thead>
         <tbody>
             <?php
-            if ($students->num_rows > 0) {
+            if ($students && $students->num_rows > 0) {
                 while ($row = $students->fetch_assoc()) {
-                    $courses = isset($row['courses']) && !empty($row['courses']) ? $row['courses'] : 'Нет курсов';
-                    $age = isset($row['age']) ? $row['age'] : 'Не указан';  // Проверка на наличие возраста
+                    $courses = isset($row['courses']) && !empty($row['courses']) ? nl2br($row['courses']) : 'Нет курсов';
+
+                    $age = isset($row['age']) ? $row['age'] : 'Не указан';
                     echo "<tr>
                             <td>{$row['id_student']}</td>
                             <td>{$row['student_name']}</td>
-                            <td>{$age}</td> <!-- Выводим возраст -->
+                            <td>{$age}</td>
                             <td>{$row['teacher_name']}</td>
                             <td>{$courses}</td>
                           </tr>";
                 }
-                              
             } else {
                 echo "<tr><td colspan='5'>Нет учеников</td></tr>";
             }
@@ -244,8 +272,7 @@ $conn->close();
         <label for="course_teacher_id">Преподаватель:</label>
         <select name="course_teacher_id" required>
             <?php
-            $teachers = fetch_teachers(new mysqli(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_DATABASE));
-            if ($teachers->num_rows > 0) {
+            if ($teachers && $teachers->num_rows > 0) {
                 while ($row = $teachers->fetch_assoc()) {
                     echo "<option value='{$row['id_teacher']}'>{$row['name']}</option>";
                 }
@@ -269,13 +296,26 @@ $conn->close();
         </thead>
         <tbody>
             <?php
-            if ($courses->num_rows > 0) {
+            // Выводим содержимое переменной $courses перед строкой 291
+            $courses = fetch_courses($conn);
+
+           // Если $courses — это объект mysqli_result и он содержит строки
+            if ($courses instanceof mysqli_result && $courses->num_rows > 0) {
                 while ($row = $courses->fetch_assoc()) {
-                    echo "<tr><td>{$row['id_course']}</td><td>{$row['course_name']}</td><td>{$row['duration']}</td><td>{$row['teacher_name']}</td></tr>";
+                    // Выводим данные курсов
+                    echo "<tr>
+                            <td>{$row['id_course']}</td>
+                            <td>{$row['course_name']}</td>
+                            <td>{$row['duration']}</td>
+                            <td>" . (empty($row['teacher_name']) ? 'Не указан' : $row['teacher_name']) . "</td>
+                        </tr>";
                 }
             } else {
+                // Если курсов нет
                 echo "<tr><td colspan='4'>Нет курсов</td></tr>";
             }
+
+            $conn->close();
             ?>
         </tbody>
     </table>
