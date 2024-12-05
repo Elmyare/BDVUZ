@@ -106,6 +106,8 @@ $courses_table = fetch_all_data($conn, "SELECT c.id_course, c.course_name, c.dur
 // Получение данных для форм
 $teachers_form = $teachers_table;
 $courses_form = $courses_table;
+
+$conn->close();
 ?>
 
 <!DOCTYPE html>
